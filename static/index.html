@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CycleScope · 全国骑行路线策划台</title>
+  <meta name="description" content="面向全国骑行规划的智能路书工作台，支持口语化意图、路线候选、时间与道路约束分析。" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="left-rail glass-panel">
+      <section class="sidebar-brand panel-card">
+        <div class="brand">
+          <div class="brand-mark">
+            <span></span>
+            <span></span>
+          </div>
+          <div>
+            <div class="brand-name">CycleScope</div>
+            <div class="brand-subtitle">全国骑行策划台</div>
+          </div>
+        </div>
+        <div class="sidebar-meta">
+          <div class="topbar-status sidebar-status">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">准备规划</span>
+          </div>
+          <div class="sidebar-pills">
+            <span class="mode-pill">Multi-Agent</span>
+            <span class="mode-pill" id="clock"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="hero-panel panel-card">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">规划输入</p>
+            <h1>规划一条真能骑的路线。</h1>
+          </div>
+          <span class="panel-tag">Intent</span>
+        </div>
+        <p class="hero-copy">写起终点、环线、日落或避车偏好。</p>
+        <textarea id="intent-input" rows="5" placeholder="例：从中国石油大学华东唐岛湾校区到星光岛看日落再返回，尽量避开大车多的路。"></textarea>
+        <div class="sample-row">
+          <button class="sample-chip" data-sample="周末想在青岛黄岛骑个东西环岛一圈，前半段多爬升，后半段轻松巡航，最好赶在日落前到海边。">黄岛环岛</button>
+          <button class="sample-chip" data-sample="我想周末骑车，青岛环大珠山骑行，最好最后能看日落，尽量别走大车多的路。">环大珠山</button>
+          <button class="sample-chip" data-sample="这周末想在成都周边骑一个80公里左右的训练路线，先热身平路，后面再爬升。">成都训练</button>
+        </div>
+        <button id="start-btn" class="primary-btn" type="button" onclick="window.startPlan && window.startPlan()">开始智能规划</button>
+      </section>
+
+      <section class="panel-card progress-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">实时进度</p>
+            <h2>规划进度</h2>
+          </div>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="timeline-empty" id="timeline-empty">开始后显示关键进度。</div>
+        <div id="timeline"></div>
+      </section>
+
+      <section class="panel-card agent-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">智能系统</p>
+            <h2>系统能力</h2>
+          </div>
+          <span class="panel-tag">Stack</span>
+        </div>
+        <div id="system-grid" class="info-grid"></div>
+      </section>
+
+      <section class="panel-card hidden" id="editor-section">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">路线修正</p>
+            <h2>Manual Assist</h2>
+          </div>
+          <span class="panel-tag">Edit</span>
+        </div>
+        <div class="editor-grid">
+          <label class="full">
+            <span>地图点选</span>
+            <div class="map-edit-actions">
+              <button class="ghost-btn" id="pick-origin-btn" type="button">点选起点</button>
+              <button class="ghost-btn" id="pick-waypoint-btn" type="button">添加途经点</button>
+              <button class="ghost-btn" id="pick-destination-btn" type="button">点选终点</button>
+              <button class="ghost-btn" id="clear-map-picks-btn" type="button">清除点选</button>
+            </div>
+          </label>
+          <label>
+            <span>起点</span>
+            <input id="edit-origin" type="text" placeholder="输入更准确的起点" />
+          </label>
+          <label>
+            <span>终点</span>
+            <input id="edit-destination" type="text" placeholder="输入更准确的终点" />
+          </label>
+          <label class="full">
+            <span>途经点</span>
+            <input id="edit-waypoints" type="text" placeholder="多个途经点用 / 分隔，例如 五四广场 / 栈桥" />
+          </label>
+          <label class="full">
+            <span>补充要求</span>
+            <textarea id="edit-notes" rows="3" placeholder="例如：优先海边自行车道，帮我安排咖啡补给和日落时间。"></textarea>
+          </label>
+        </div>
+        <button id="replan-btn" class="secondary-btn" type="button" onclick="window.replanFromEditor && window.replanFromEditor()">按修正内容重新规划</button>
+      </section>
+    </aside>
+
+    <section class="workspace-stage">
+      <section class="map-stage">
+        <div id="map"></div>
+        <div class="map-vignette"></div>
+
+        <div class="map-topbar glass-panel">
+            <div class="map-summary">
+              <p class="eyebrow">Map</p>
+            <div id="map-insight-text">主线与关键点</div>
+            <div id="road-ribbon" class="road-ribbon hidden"></div>
+          </div>
+          <div class="map-tools">
+            <span id="resolved-region" class="location-pill">等待解析</span>
+            <span class="legend-pill">Live</span>
+          </div>
+        </div>
+
+        <div class="map-legend glass-panel hidden" id="route-legend">
+          <div class="panel-head compact">
+            <div>
+              <p class="eyebrow">地图图例</p>
+              <h2>Route Key</h2>
+            </div>
+          </div>
+          <div id="legend-list" class="legend-list"></div>
+        </div>
+
+        <div class="poi-drawer glass-panel hidden" id="poi-drawer">
+          <div class="panel-head compact">
+            <div>
+              <p class="eyebrow">沿线设施</p>
+              <h2>POI</h2>
+            </div>
+          </div>
+          <div id="poi-list" class="poi-list"></div>
+        </div>
+      </section>
+
+      <section class="inspector-shell glass-panel">
+        <div class="inspector-head">
+          <div>
+            <p class="eyebrow">路线执行台</p>
+            <h2>执行台</h2>
+          </div>
+            <p class="inspector-copy">候选、补给、海拔与分段。</p>
+        </div>
+
+        <div class="inspector-grid">
+          <section class="panel-card hidden" id="route-section">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">候选路线</p>
+                <h2>候选路线</h2>
+              </div>
+              <button id="confirm-btn" class="dock-confirm-btn" type="button" disabled onclick="window.finalizePlan && window.finalizePlan()">确认路线</button>
+            </div>
+            <div id="route-cards" class="route-cards"></div>
+          </section>
+
+          <section class="panel-card summary-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">路线洞察</p>
+                <h2>路线概览</h2>
+              </div>
+              <span class="panel-tag">Plan</span>
+            </div>
+            <div id="constraint-chips" class="chip-cloud empty">
+              <span class="muted">系统会在这里展示识别到的区域、环线类型和骑行约束。</span>
+            </div>
+            <div id="route-resolution" class="mini-brief hidden"></div>
+            <div id="analysis-overview" class="analysis-overview empty">
+              <span class="muted">候选路线生成后，这里会展示拟合度、时间规划和道路特征。</span>
+            </div>
+            <div id="metrics-strip" class="metrics-strip hidden"></div>
+          </section>
+
+          <section class="panel-card hidden" id="atlas-section">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">路线图谱</p>
+                <h2>补给 / 海拔 / 风景</h2>
+              </div>
+              <span class="panel-tag">Atlas</span>
+            </div>
+            <div id="atlas-grid" class="atlas-grid"></div>
+          </section>
+
+          <section class="panel-card weather-panel hidden" id="weather-section">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">骑行天气</p>
+                <h2 id="w-desc">Weather</h2>
+              </div>
+              <span class="panel-tag">Live</span>
+            </div>
+            <div class="weather-grid">
+              <div class="weather-primary">
+                <span id="w-temp">--°</span>
+                <small>当前体感参考</small>
+              </div>
+              <div class="weather-stat">
+                <span>风速</span>
+                <strong id="w-wind">-- km/h</strong>
+              </div>
+              <div class="weather-stat">
+                <span>降水</span>
+                <strong id="w-rain">-- mm</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-card feature-panel hidden" id="feature-section">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">骑行建议</p>
+                <h2>执行建议</h2>
+              </div>
+              <span class="panel-tag">Assist</span>
+            </div>
+            <div id="insight-grid" class="detail-stack"></div>
+            <div id="feature-grid" class="detail-stack"></div>
+          </section>
+
+          <section class="panel-card hidden" id="focus-section">
+            <div class="panel-head compact">
+              <div>
+                <p class="eyebrow">聚焦详情</p>
+                <h2 id="focus-title">当前聚焦</h2>
+              </div>
+            </div>
+            <div id="focus-body" class="focus-body"></div>
+          </section>
+
+          <section class="panel-card hidden" id="segment-section">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">路线分段</p>
+                <h2>分段路书</h2>
+              </div>
+              <span class="panel-tag">Steps</span>
+            </div>
+            <div id="segment-hint" class="segment-hint">点击某一段后，地图会高亮这一段并聚焦到对应道路。</div>
+            <div id="segment-list" class="segment-list"></div>
+          </section>
+
+          <section class="panel-card roadbook-panel hidden" id="roadbook-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">最终路书</p>
+                <h2>专业骑行执行稿</h2>
+              </div>
+              <div class="roadbook-actions">
+                <button class="ghost-btn" id="copy-btn" type="button" title="复制路书">复制</button>
+                <button class="ghost-btn" id="close-rp-btn" type="button" title="关闭">收起</button>
+              </div>
+            </div>
+            <div id="roadbook-body" class="markdown-body"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/script.js"></script>
+</body>
+</html>
